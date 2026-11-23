@@ -2,7 +2,7 @@ import * as Cesium from 'cesium';
 
 /**
  * Camera presets for notable locations.
- * Phase 1 default: fly to Austin, TX on load.
+ * On load the camera flies to HOME_VIEW (below), not to one of these.
  */
 export const CAMERA_PRESETS = {
   austin: {
@@ -47,12 +47,25 @@ export function flyToPreset(viewer, presetName, duration = 3.0) {
 }
 
 /**
- * Set camera to Austin on load with a cinematic fly-in.
+ * Where the camera lands on load when no share link is being restored.
+ * Heights are above the ellipsoid; downtown Boston tops out near 240 m, so the
+ * fly-in ends well above the skyline.
  */
-export function flyToAustin(viewer) {
+export const HOME_VIEW = Object.freeze({
+  name: 'Boston, MA',
+  lat: 42.3601,
+  lon: -71.0589,
+  approachHeightM: 25000,
+  heightM: 1200,
+});
+
+/**
+ * Set camera to the home view on load with a cinematic fly-in.
+ */
+export function flyToHome(viewer) {
   // Start from a high altitude, then fly down
   viewer.camera.setView({
-    destination: Cesium.Cartesian3.fromDegrees(-97.7431, 30.2672, 25000),
+    destination: Cesium.Cartesian3.fromDegrees(HOME_VIEW.lon, HOME_VIEW.lat, HOME_VIEW.approachHeightM),
     orientation: {
       heading: Cesium.Math.toRadians(0),
       pitch: Cesium.Math.toRadians(-90),
@@ -63,7 +76,7 @@ export function flyToAustin(viewer) {
   // Cinematic fly-in after a brief pause
   setTimeout(() => {
     viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(-97.7431, 30.2672, 600),
+      destination: Cesium.Cartesian3.fromDegrees(HOME_VIEW.lon, HOME_VIEW.lat, HOME_VIEW.heightM),
       orientation: {
         heading: Cesium.Math.toRadians(15),
         pitch: Cesium.Math.toRadians(-30),

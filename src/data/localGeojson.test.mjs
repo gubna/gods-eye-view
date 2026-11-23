@@ -11,6 +11,7 @@ import {
   createLocalInfrastructureOverlayPublisher,
   localDatasetError,
   localInfrastructureOverlayCopy,
+  parseGeoJsonText,
   selectLocalInfrastructureOverlayCohort,
 } from './localGeojson.js';
 import { layerFeedState } from './manager.js';
@@ -962,4 +963,81 @@ test('after the cap a camera-motion frame still samples, and re-opens the budget
     GROUND_SAMPLE_MAX_ARMED_RETRIES,
     'a grounded record asks for no further frames',
   );
+});
+
+test('the parser takes a FeatureCollection, a lone Feature, or GeoJSON Lines', () => {
+  const feature = JSON.parse(ONE_POLYGON_FEATURE);
+  assert.deepEqual(parseGeoJsonText(JSON.stringify({ type: 'FeatureCollection', features: [feature, feature] })), [feature, feature]);
+  assert.deepEqual(parseGeoJsonText(ONE_POLYGON_FEATURE), [feature]);
+  assert.deepEqual(parseGeoJsonText(`${ONE_POLYGON_FEATURE}\n\n${ONE_POLYGON_FEATURE}\n`), [feature, feature]);
+  assert.throws(() => parseGeoJsonText('{"type":"Feature"\n'), SyntaxError);
+});
+
+test('a live feed served as a FeatureCollection loads like a bundled file', async () => {
+  const body = JSON.stringify({ type: 'FeatureCollection', features: [JSON.parse(ONE_POLYGON_FEATURE)] });
+  const { layer, cleanup } = await enableLayerWithFetch(async () => ({ ok: true, status: 200, text: async () => body }));
+  const stats = layer.getStats();
+  assert.equal(stats.error, null);
+  assert.ok(stats.count > 0);
+  cleanup();
+});
+
+test('a keyless feed names the missing key instead of a bare 503', async () => {
+  const { layer, cleanup } = await enableLayerWithFetch(async () => ({
+    ok: false,
+    status: 503,
+    text: async () => JSON.stringify({ error: 'no_key', env: 'OPENAQ_API_KEY' }),
+  }));
+  assert.equal(layer.getStats().error, 'dataset unavailable (needs OPENAQ_API_KEY)');
+  cleanup();
+});
+
+test('a refreshing layer swaps its source on update instead of stacking a second one', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  globalThis.window = { dispatchEvent() {} };
+  const added = [];
+  const removed = [];
+  const viewer = {
+    dataSources: { add(source) { added.push(source); }, remove(source) { removed.push(source); return true; } },
+    camera: { positionWC: Cesium.Cartesian3.fromDegrees(0, 0, 1000), moveEnd: new MockLayerEvent() },
+    scene: { canvas: {}, preRender: new MockLayerEvent(), pick() { return null; } },
+  };
+  const layer = createLocalGeoJsonLayer({
+    id: 'feed-test',
+    url: '/api/geofeed/feed-test',
+    name: 'Test Feed',
+    color: '#ff0000',
+    refreshMs: 60_000,
+    overlayHost: { setVisible() {}, setEntries() {}, clearSource() {} },
+    screenSpaceEventHandlerFactory: () => ({ setInputAction() {}, destroy() {} }),
+  });
+  let fetches = 0;
+  globalThis.fetch = async () => {
+    fetches += 1;
+    return { ok: true, status: 200, text: async () => ONE_POLYGON_FEATURE };
+  };
+  try {
+    assert.equal(layer.updateInterval, 60_000, 'the manager arms its poll loop from updateInterval');
+    await layer.enable(viewer);
+    await layer.update(viewer);
+    assert.equal(fetches, 2);
+    assert.equal(added.length, 2);
+    assert.deepEqual(removed, [added[0]], 'the first source is removed before the second is added');
+    assert.equal(layer.getStats().error, null);
+
+    layer.disable(viewer);
+    await layer.update(viewer);
+    assert.equal(fetches, 2, 'a disabled layer never refetches');
+  } finally {
+    globalThis.fetch = originalFetch;
+    layer.destroy(viewer);
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('a bundled layer keeps the load-once contract', () => {
+  const layer = createLocalGeoJsonLayer({ id: 'local-dams', url: '/x', name: 'Dams', color: '#0088ff' });
+  assert.equal(layer.updateInterval, 0);
 });

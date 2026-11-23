@@ -1,3 +1,5 @@
+import { GEO_FEEDS } from './geoFeedCatalog.js';
+
 /**
  * How the DATA LAYERS panel is organised.
  *
@@ -29,6 +31,11 @@
  * @property {Array<string>} layers  Layer ids, in display order.
  */
 
+/** Live public feeds file themselves by their catalog `group`. */
+function feedIdsFor(groupId) {
+  return GEO_FEEDS.filter((feed) => feed.group === groupId).map((feed) => feed.id);
+}
+
 /** @type {ReadonlyArray<LayerGroup>} */
 export const LAYER_GROUPS = Object.freeze([
   Object.freeze({
@@ -50,7 +57,7 @@ export const LAYER_GROUPS = Object.freeze([
     label: 'EARTH',
     icon: '🌍',
     blurb: 'Geophysics: what the planet is doing right now',
-    layers: Object.freeze(['earthquakes', 'temperature', 'local-firms']),
+    layers: Object.freeze(['earthquakes', 'temperature', 'local-firms', ...feedIdsFor('earth')]),
   }),
   Object.freeze({
     id: 'harm',
@@ -64,7 +71,7 @@ export const LAYER_GROUPS = Object.freeze([
     label: 'LIFE',
     icon: '🌱',
     blurb: 'Forests, reefs, wildlife and protected land',
-    layers: Object.freeze([]),
+    layers: Object.freeze(feedIdsFor('life')),
   }),
   Object.freeze({
     id: 'history',
@@ -85,7 +92,7 @@ export const LAYER_GROUPS = Object.freeze([
     label: 'HEALTH',
     icon: '🩺',
     blurb: 'Air, water, disease and care',
-    layers: Object.freeze([]),
+    layers: Object.freeze(feedIdsFor('health')),
   }),
   Object.freeze({
     id: 'eyes',
@@ -113,7 +120,7 @@ export const LAYER_GROUPS = Object.freeze([
     label: 'CITY',
     icon: '🚗',
     blurb: 'Getting around',
-    layers: Object.freeze(['traffic', 'bikeshare']),
+    layers: Object.freeze(['traffic', 'bikeshare', ...feedIdsFor('city')]),
   }),
   Object.freeze({
     id: 'trade',
@@ -127,7 +134,7 @@ export const LAYER_GROUPS = Object.freeze([
     label: 'SPACE',
     icon: '🔭',
     blurb: 'Looking outward rather than down',
-    layers: Object.freeze([]),
+    layers: Object.freeze(feedIdsFor('space')),
   }),
   Object.freeze({
     id: 'power',

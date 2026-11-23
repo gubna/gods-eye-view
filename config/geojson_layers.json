@@ -1,0 +1,12 @@
+{
+  "_help": "Each entry in `layers` becomes a globe layer fetched through /api/geofeed/feed-custom-<id>. Only https URLs listed here can be fetched. The upstream must return a GeoJSON FeatureCollection. Custom layers appear under OTHER in the DATA LAYERS panel. Optional: name, color, icon, source, refreshMinutes (default 60), labelProperty, keyEnv + keyParam or keyHeader (the key is read from that env var on the server). Restart the dev server after editing.",
+  "_example": {
+    "id": "usgs-significant-quakes",
+    "name": "Significant Earthquakes (30 days)",
+    "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_month.geojson",
+    "color": "#ff9500",
+    "refreshMinutes": 15,
+    "labelProperty": "title"
+  },
+  "layers": []
+}

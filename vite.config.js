@@ -40,6 +40,7 @@ import {
   isOverBudget as isTomTomOverBudget,
 } from './src/data/tomtomTiles.js';
 import { filterTrailing24h, parseFirmsCsv } from './src/data/firmsCsv.js';
+import { geoFeedProxy } from './src/data/geoFeedProxy.js';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { defineConfig, loadEnv } from 'vite';
@@ -9290,6 +9291,7 @@ export default defineConfig(({ mode }) => {
       celestrakProxy(),
       tomtomProxy(),
       firmsProxy(),
+      geoFeedProxy(),
       rocketLaunchesProxy(),
       terrainHeightsProxy(),
       adsbdbProxy(),

@@ -273,6 +273,43 @@ export function localDatasetError(error) {
 }
 
 /**
+ * Accept either a GeoJSON document (FeatureCollection or a single Feature) or
+ * GeoJSON Lines (one Feature per line). A JSONL file fails the whole-document
+ * parse and falls through to the line parser; a malformed line still throws
+ * SyntaxError, which localDatasetError reports as "malformed".
+ *
+ * @param {string} text
+ * @returns {Array<object>} features
+ */
+export function parseGeoJsonText(text) {
+  const trimmed = String(text || '').trim();
+  if (trimmed.startsWith('{')) {
+    let doc = null;
+    try { doc = JSON.parse(trimmed); } catch { /* JSONL — parsed per line below */ }
+    if (doc?.type === 'FeatureCollection' && Array.isArray(doc.features)) return doc.features;
+    if (doc?.type === 'Feature') return [doc];
+  }
+  return trimmed.split('\n').filter((l) => l.trim().length > 0).map((line) => JSON.parse(line));
+}
+
+/**
+ * Turn a non-OK response into a short reason. The geofeed proxy answers a
+ * missing key with {error:'no_key', env}, which deserves to say which key.
+ *
+ * @param {{status?: number, text?: () => Promise<string>}} response
+ * @returns {Promise<Error>}
+ */
+async function responseError(response) {
+  let detail = '';
+  try {
+    const body = JSON.parse(await response.text());
+    if (body?.error === 'no_key' && body.env) detail = `needs ${body.env}`;
+    else if (body?.message) detail = String(body.message).slice(0, 80);
+  } catch { /* HTML 404 page or empty body */ }
+  return new Error(detail || `HTTP ${response.status ?? '?'}`);
+}
+
+/**
  * A minimal, rock-solid native implementation for loading local GeoJSON Data.
  * Draws 3D stems (polylines) attached to Point entities and ensures
  * standard scene.pick natively clicks them.
@@ -287,6 +324,8 @@ export function createLocalGeoJsonLayer({
   labels = true,
   labelMax = DEFAULT_LABEL_MAX,
   labelGridPx = DEFAULT_LABEL_GRID_PX,
+  /** Live feeds: reload this often while enabled. 0 = load once (bundled data). */
+  refreshMs = 0,
   overlayHost = DEFAULT_OVERLAY_HOST,
   screenSpaceEventHandlerFactory = (canvas) => new Cesium.ScreenSpaceEventHandler(canvas),
   projectToWindow = (scene, position) => Cesium.SceneTransforms.worldToWindowCoordinates(scene, position),
@@ -371,20 +410,38 @@ export function createLocalGeoJsonLayer({
     }
   };
 
-  return {
+  const layer = {
     id,
     name,
     icon,
     source,
-    updateInterval: 0,
+    updateInterval: refreshMs > 0 ? refreshMs : 0,
     statsRefreshInterval: 1000,
 
     init: async (viewer) => {
       // DataLayerManager calls this once
     },
-    
+
+    /**
+     * The manager only calls this for an enabled layer and never overlaps two
+     * calls, so a reload is: drop the current source, then run enable()'s
+     * build path again. A failed reload leaves the chip UNAVAILABLE; the
+     * geofeed proxy serves its last good body on upstream errors, so that is
+     * reserved for the proxy itself being down. A layer that failed its first
+     * load (e.g. a key added since) retries here too.
+     */
     update: async (viewer) => {
-      // DataLayerManager calls this when enabled
+      if (!(refreshMs > 0) || !_enabled || _destroyed) return;
+      if (_dataSource) {
+        clearSelectedEntityContextForLayer(id);
+        if (viewer?.selectedEntity?.__localLayerId === id) viewer.selectedEntity = undefined;
+        try { viewer?.dataSources?.remove(_dataSource, true); } catch { /* already gone */ }
+        _dataSource = null;
+        _stemRecords = [];
+        _count = 0;
+        _overlayPublisher.publish([]);
+      }
+      await layer.enable(viewer);
     },
     
     /**
@@ -425,13 +482,10 @@ export function createLocalGeoJsonLayer({
           // A 404 returns an HTML body that would otherwise die in JSON.parse
           // one line later, reported as a parse error for a missing file.
           if (!response.ok) {
-            throw new Error(`HTTP ${response.status ?? '?'}`);
+            throw await responseError(response);
           }
-          const text = await response.text();
-          const lines = text.split('\n').filter(l => l.trim().length > 0);
-          
-          const features = lines.map(line => JSON.parse(line));
-          
+          const features = parseGeoJsonText(await response.text());
+
           const geojson = {
             type: 'FeatureCollection',
             features
@@ -743,6 +797,7 @@ export function createLocalGeoJsonLayer({
       _error = null;
     }
   };
+  return layer;
 }
 
 function compareLocalOverlayRecords(a, b) {
