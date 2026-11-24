@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import {
   applyAntialiasing,
+  msaaAllowed,
   loadRenderQuality,
   setNativeResolution,
   setRenderQuality,
@@ -134,7 +135,9 @@ async function init() {
         document.body.appendChild(el);
         return el;
       })(),
-      msaaSamples: 4,
+      // Sandy/Ivy Bridge Intel GPUs lose the WebGL context under MSAA, and a
+      // lost context never comes back — decide before the first frame.
+      msaaSamples: msaaAllowed() ? 4 : 1,
       contextOptions: {
         webgl: {
           preserveDrawingBuffer: true,
