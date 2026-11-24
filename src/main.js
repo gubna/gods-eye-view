@@ -38,6 +38,7 @@ import { initFreeVoice, shouldUseFreeVoice } from './voice/freeVoice.js';
 import { MapStackController } from './mapStackController.js';
 import { initAnnotations } from './annotations/index.js';
 import { initLogoGaze } from './logoGaze.js';
+import { installCanvasSizeGuard } from './canvasSizeGuard.js';
 import { initCockpitCloudEffects } from './cockpitCloudEffects.js';
 import {
   installRenderGovernor,
@@ -191,6 +192,10 @@ async function init() {
     });
 
     setNativeResolution(viewer);
+    // Below 1x (Low/Medium quality, flight sim) a 1 px window truncates the
+    // canvas to 0 while Cesium still thinks it can render — and one such frame
+    // stops rendering for the session. See canvasSizeGuard.js.
+    installCanvasSizeGuard(viewer);
 
     // Antialiasing: exactly ONE. The app shipped 4x MSAA and FXAA together —
     // two antialiasers doing the same job, with FXAA additionally pinning the
