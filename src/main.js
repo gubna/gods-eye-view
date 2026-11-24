@@ -29,7 +29,7 @@ import { createFlightSimPanel } from './flightSim/flightSimPanel.js';
 import aisLiveVesselsLayer from './data/aisLiveVessels.js';
 import militaryInstallationsLayer from './data/militaryInstallations.js';
 import militaryAwarenessLayer from './data/militaryAwareness.js';
-import localDataLayers from './data/localLayers.js';
+import localDataLayers, { sessionOnlyLayerDispositions } from './data/localLayers.js';
 import { LAYER_STATE_REGISTRY } from './data/layerState.js';
 import { registerDataCredits } from './data/dataCredits.js';
 import { SceneDirector } from './scenes/director.js';
@@ -302,7 +302,7 @@ async function init() {
       dataManager.register(layer);
     }
     // Restoration starts only after the complete production registry is sealed.
-    dataManager.finalizeRegistrations(LAYER_STATE_REGISTRY);
+    dataManager.finalizeRegistrations([...LAYER_STATE_REGISTRY, ...sessionOnlyLayerDispositions()]);
     if (import.meta.env.DEV) {
       window.__gevQaRegisterLayer = (targetManager, layerModule) => {
         if (targetManager !== dataManager) throw new Error('QA layer manager mismatch');
