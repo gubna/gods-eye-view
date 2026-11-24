@@ -86,6 +86,72 @@ export function effectivePixelRatio(viewer) {
 }
 
 /**
+ * GPUs whose drivers lose the WebGL context when Cesium renders with MSAA.
+ *
+ * Measured on an Intel HD Graphics 4000 (Ivy Bridge, Mesa 26.2, Chromium 152):
+ * a plain Cesium globe renders; the same globe with msaaSamples: 4 loses its
+ * context within seconds, on both the ANGLE OpenGL and Vulkan backends. The
+ * next shader compile then "fails" with an empty log, and every later frame
+ * throws "Expected width to be greater than 0" against the dead 0x0 drawing
+ * buffer. The driver still reports MAX_SAMPLES 8, so capability queries cannot
+ * catch it — only the renderer string can. Sandy Bridge shares the driver.
+ */
+const MSAA_UNSAFE_RENDERER = /HD Graphics (2000|2500|3000|4000)\b|\((IVB|SNB)\b|Ivy ?Bridge|Sandy ?Bridge/i;
+
+/** localStorage key: 'on' or 'off' forces MSAA either way, for a GPU this list gets wrong. */
+export const MSAA_OVERRIDE_KEY = 'gev.msaa';
+
+/**
+ * @param {string|null|undefined} renderer - UNMASKED_RENDERER_WEBGL string.
+ * @returns {boolean}
+ */
+export function isMsaaUnsafeRenderer(renderer) {
+  return MSAA_UNSAFE_RENDERER.test(String(renderer || ''));
+}
+
+/** Read the GPU name from a throwaway context, then release it. */
+function probeRenderer() {
+  try {
+    const canvas = globalThis.document?.createElement?.('canvas');
+    const gl = canvas?.getContext('webgl2') || canvas?.getContext('webgl');
+    if (!gl) return null;
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const renderer = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return renderer;
+  } catch {
+    return null;
+  }
+}
+
+let msaaDecision = null;
+
+/**
+ * Whether this GPU can be trusted with MSAA. Decided once per page.
+ *
+ * @param {{probe?: () => string|null, storage?: Storage|null}} [deps]
+ * @returns {boolean}
+ */
+export function msaaAllowed({ probe = probeRenderer, storage = globalThis.localStorage } = {}) {
+  if (msaaDecision !== null) return msaaDecision;
+  let override = null;
+  try { override = storage?.getItem(MSAA_OVERRIDE_KEY); } catch { /* blocked storage */ }
+  if (override === 'on' || override === 'off') {
+    msaaDecision = override === 'on';
+    return msaaDecision;
+  }
+  const renderer = probe();
+  msaaDecision = !isMsaaUnsafeRenderer(renderer);
+  if (!msaaDecision) console.info(`[Render] MSAA off for this GPU (${renderer}); FXAA only. localStorage['${MSAA_OVERRIDE_KEY}']='on' forces it back.`);
+  return msaaDecision;
+}
+
+/** @returns {void} */
+export function _resetMsaaDecisionForTest() {
+  msaaDecision = null;
+}
+
+/**
  * Choose exactly one antialiaser for the current pixel ratio.
  *
  * The app ran 4x MSAA and FXAA at the same time — two techniques solving the
@@ -106,7 +172,7 @@ export function applyAntialiasing(viewer) {
   if (!scene) return 1;
   const ratio = effectivePixelRatio(viewer);
   const supersampled = ratio >= 1.75;
-  if ('msaaSamples' in scene) scene.msaaSamples = supersampled ? 0 : 4;
+  if ('msaaSamples' in scene) scene.msaaSamples = supersampled || !msaaAllowed() ? 0 : 4;
   const fxaa = scene.postProcessStages?.fxaa;
   if (fxaa) fxaa.enabled = !supersampled;
   return ratio;

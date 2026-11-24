@@ -14,10 +14,11 @@
  * Two layers:
  *   PREVENT — after every resize, a canvas that truncated to 0 is not
  *   renderable, so Cesium skips frames until the next real size arrives.
- *   RECOVER — if a zero-size render error still lands (another path to a 0
- *   drawing buffer), drop Cesium's panel and restart the loop once the canvas
- *   has a real size. Any other render error keeps Cesium's stop-and-show
- *   behavior untouched.
+ *   RECOVER — if a zero-size render error still lands, drop Cesium's panel and
+ *   restart the loop once the canvas has a real size — unless the WebGL
+ *   context is lost, which reports the same 0x0 buffer but never recovers
+ *   (see msaaAllowed in renderQuality.js for the case that taught this).
+ *   Any other render error keeps Cesium's stop-and-show behavior untouched.
  *
  * Both reach into CesiumWidget internals (`_canvas`, `_canRender`). The guard
  * checks they exist and does nothing if a future Cesium renames them.
@@ -25,6 +26,7 @@
 
 const ZERO_SIZE_ERROR = /Expected (width|height) to be greater than 0/;
 const RECOVERY_POLL_MS = 250;
+const MAX_RECOVERIES = 5;
 
 /**
  * @param {Error|unknown} error
@@ -59,10 +61,19 @@ export function installCanvasSizeGuard(viewer, {
     return result;
   };
 
-  // RECOVER
+  // RECOVER — only from a canvas that was briefly too small. A lost WebGL
+  // context also reports a 0x0 drawing buffer and throws the same error on
+  // every frame, but it never comes back: restarting into it just repeats the
+  // error forever, so that case keeps Cesium's panel. The cap is a backstop
+  // for any other cause that makes recovery fail the same way every time.
   let recoveryTimer = null;
+  let recoveries = 0;
+  const contextLost = () => {
+    try { return Boolean(viewer.scene?.context?._gl?.isContextLost?.()); } catch { return false; }
+  };
   const resumeWhenSized = () => {
     recoveryTimer = null;
+    if (contextLost()) return;
     try { widget.resize(); } catch { /* still mid-layout */ }
     if (!hasRealSize()) {
       recoveryTimer = setTimer(resumeWhenSized, RECOVERY_POLL_MS);
@@ -73,6 +84,12 @@ export function installCanvasSizeGuard(viewer, {
   };
   const onRenderError = (_scene, error) => {
     if (!isZeroSizeRenderError(error)) return;
+    if (contextLost()) {
+      warn('[Render] the WebGL context was lost (GPU/driver reset); rendering cannot resume without a reload.');
+      return;
+    }
+    if (recoveries >= MAX_RECOVERIES) return;
+    recoveries += 1;
     // Cesium's own listener ran first (it registers in the widget constructor):
     // the loop is stopped and its panel is up. Undo both for this one cause.
     widget.element?.querySelector?.('.cesium-widget-errorPanel')?.remove();

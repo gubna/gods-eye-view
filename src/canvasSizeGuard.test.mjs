@@ -34,14 +34,15 @@ function fakeViewer({ clientWidth = 800, clientHeight = 600, pixelRatio = 1 } = 
       this._canRender = width !== 0 && height !== 0;
     },
   };
-  const scene = { renderError: new Cesium.Event(), renders: 0, requestRender() { this.renders += 1; } };
+  const gl = { lost: false, isContextLost() { return this.lost; } };
+  const scene = { renderError: new Cesium.Event(), renders: 0, requestRender() { this.renders += 1; }, context: { _gl: gl } };
   const viewer = { cesiumWidget: widget, scene, useDefaultRenderLoop: true };
   // Cesium's widget registers its stop-and-show listener in its constructor, before ours.
   scene.renderError.addEventListener(() => {
     viewer.useDefaultRenderLoop = false;
     widget.panelUp = true;
   });
-  return { viewer, widget, canvas, scene, panel };
+  return { viewer, widget, canvas, scene, panel, gl };
 }
 
 function manualTimers() {
@@ -133,4 +134,42 @@ test('uninstall restores resize and stops listening', () => {
 test('a widget without the expected internals is left alone', () => {
   assert.doesNotThrow(() => installCanvasSizeGuard({ cesiumWidget: { resize() {} } })());
   assert.doesNotThrow(() => installCanvasSizeGuard(undefined)());
+});
+
+test('a lost WebGL context is never restarted: Cesium\'s panel stays and no retry is scheduled', () => {
+  // The Intel HD 4000 + MSAA case: canvas 621x607, drawing buffer 0x0, every frame throws.
+  const { viewer, scene, panel, gl } = fakeViewer({ clientWidth: 621, clientHeight: 607 });
+  const timers = manualTimers();
+  const warnings = [];
+  installCanvasSizeGuard(viewer, { ...timers, warn: (m) => warnings.push(m) });
+  gl.lost = true;
+  for (let i = 0; i < 50; i++) scene.renderError.raiseEvent(scene, ZERO);
+  assert.equal(panel.removed, false);
+  assert.equal(viewer.useDefaultRenderLoop, false);
+  assert.equal(timers.pending, 0, 'no restart loop');
+  assert.match(warnings[0], /context was lost/);
+});
+
+test('a context lost while a recovery is pending stops that recovery', () => {
+  const { viewer, canvas, scene, gl } = fakeViewer({ clientWidth: 1, pixelRatio: 0.5 });
+  const timers = manualTimers();
+  installCanvasSizeGuard(viewer, { ...timers, warn() {} });
+  scene.renderError.raiseEvent(scene, ZERO);
+  gl.lost = true;
+  canvas.clientWidth = 1400;
+  timers.flush();
+  assert.equal(viewer.useDefaultRenderLoop, false);
+});
+
+test('recovery is capped so a cause that keeps failing cannot loop forever', () => {
+  const { viewer, scene } = fakeViewer({ clientWidth: 1400, clientHeight: 900 });
+  const timers = manualTimers();
+  let resumed = 0;
+  installCanvasSizeGuard(viewer, { ...timers, warn() {} });
+  for (let i = 0; i < 20; i++) {
+    scene.renderError.raiseEvent(scene, ZERO);
+    timers.flush();
+    if (viewer.useDefaultRenderLoop) resumed += 1;
+  }
+  assert.equal(resumed, 5);
 });
