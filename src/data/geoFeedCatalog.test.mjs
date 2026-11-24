@@ -9,6 +9,8 @@ import {
 } from './geoFeedCatalog.js';
 import { createGeoFeedHandler } from './geoFeedProxy.js';
 import { LAYER_GROUPS } from './layerGroups.js';
+import { LAYER_STATE_REGISTRY, REGISTERED_LAYER_IDS } from './layerState.js';
+import { DataLayerManager } from './manager.js';
 
 const feed = (id) => GEO_FEEDS.find((f) => f.id === id);
 const point = (lon, lat, properties = {}) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] }, properties });
@@ -23,6 +25,24 @@ test('every built-in feed has a unique id, an https upstream, and a panel group'
     assert.ok(f.refreshMs >= 60_000, `${f.id} refreshes at most once a minute`);
     assert.ok(grouped.has(f.id), `${f.id} is filed in a layer group`);
   }
+});
+
+test('every built-in feed has a share-link entry, so main.js can seal the manager', () => {
+  const registered = new Set(REGISTERED_LAYER_IDS);
+  for (const f of GEO_FEEDS) assert.ok(registered.has(f.id), `${f.id} is missing from LAYER_STATE_REGISTRY`);
+});
+
+test('the manager seals user layers declared session-only and still rejects undeclared ones', () => {
+  const fake = (id) => ({ id, name: id, init() {}, update() {}, enable() {}, disable() {}, getStats: () => ({ count: 0, lastUpdate: null }) });
+  const sealed = new DataLayerManager({});
+  for (const id of REGISTERED_LAYER_IDS) sealed.register(fake(id));
+  sealed.register(fake('user-bike-routes'));
+  assert.equal(sealed.finalizeRegistrations([...LAYER_STATE_REGISTRY, { id: 'user-bike-routes', disposition: 'session-only' }]), true);
+
+  const unsealed = new DataLayerManager({});
+  for (const id of REGISTERED_LAYER_IDS) unsealed.register(fake(id));
+  unsealed.register(fake('user-bike-routes'));
+  assert.throws(() => unsealed.finalizeRegistrations(LAYER_STATE_REGISTRY), /missing: user-bike-routes/);
 });
 
 test('normalize drops geometry-less features, caps the count, and names every feature', () => {

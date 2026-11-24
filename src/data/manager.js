@@ -28,6 +28,10 @@ const VALID_LAYER_SERIALIZATION_DISPOSITIONS = new Set([
   'enabled-only',
   'enabled+options',
   'enabled+mirrored-options',
+  // Layers whose ids come from the user's own files/config at build time.
+  // They have no share-link token: a link must not name a layer another
+  // checkout may not have. Declared, so the seal still proves nothing slipped.
+  'session-only',
 ]);
 
 function isAbortError(error) {

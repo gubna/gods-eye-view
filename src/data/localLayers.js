@@ -50,7 +50,7 @@ const fires = createFirmsHeatmapLayer({
 // Custom URLs from config/geojson_layers.json ride the same proxy; the server
 // reads the same file, so only URLs listed there can ever be fetched.
 const { feeds: customFeeds } = normalizeCustomFeeds(customLayerConfig);
-const feedLayers = [...GEO_FEEDS, ...customFeeds].map((feed) => createLocalGeoJsonLayer({
+const feedLayer = (feed) => createLocalGeoJsonLayer({
   id: feed.id,
   url: `/api/geofeed/${encodeURIComponent(feed.id)}`,
   name: feed.name,
@@ -59,7 +59,11 @@ const feedLayers = [...GEO_FEEDS, ...customFeeds].map((feed) => createLocalGeoJs
   source: feed.source,
   refreshMs: feed.refreshMs,
   labels: true,
-}));
+});
+// Built-in feeds own share-link tokens in layerState.js; custom ones are
+// session-only (see sessionOnlyLayerDispositions).
+const feedLayers = GEO_FEEDS.map(feedLayer);
+const customLayers = customFeeds.map((feed) => Object.assign(feedLayer(feed), { sessionOnly: true }));
 
 // Drop-in files: any .geojson / .geojsonl in local_data/user_layers/ becomes a
 // layer named after the file, bundled with the build like datacenters/dams.
@@ -72,21 +76,33 @@ const userLayers = Object.entries(userFiles)
   .sort(([a], [b]) => a.localeCompare(b))
   .map(([file, fileUrl]) => {
     const stem = file.split('/').pop().replace(/\.(geojsonl?)$/i, '');
-    return createLocalGeoJsonLayer({
+    return Object.assign(createLocalGeoJsonLayer({
       id: `user-${stem.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`,
       url: fileUrl,
       name: stem.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
       color: '#bf5af2',
       icon: '◆',
       source: 'Your file',
-    });
+    }), { sessionOnly: true });
   });
 
-export default [
+const allLayers = [
   datacenters,
   dams,
   submarineCablesLayer,
   fires,
   ...feedLayers,
+  ...customLayers,
   ...userLayers,
 ];
+
+/**
+ * Seal entries for layers whose ids come from the user's own files or config.
+ * They exist only in this checkout, so they never get share-link tokens.
+ * @returns {Array<{id: string, disposition: 'session-only'}>}
+ */
+export function sessionOnlyLayerDispositions(layers = allLayers) {
+  return layers.filter((layer) => layer.sessionOnly).map((layer) => ({ id: layer.id, disposition: 'session-only' }));
+}
+
+export default allLayers;

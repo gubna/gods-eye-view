@@ -283,6 +283,22 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'bikeshare', token: 'b', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cctv', token: 'c', disposition: 'enabled+options', optionOwner: 'cctv' }),
   Object.freeze({ id: 'earthquakes', token: 'e', disposition: 'enabled-only' }),
+  // Live public GeoJSON feeds (geoFeedCatalog.js). The letters left after the
+  // original layers were j/n/o/v/z, so most of these take digits. 'z' stays
+  // free on purpose: the codec tests use it as the canonical unknown token.
+  // Ids sort here because the registry is asserted to be lexical.
+  Object.freeze({ id: 'feed-eonet', token: 'n', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'feed-fireballs', token: '8', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'feed-gdacs', token: 'j', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'feed-inaturalist', token: 'v', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'feed-nhc-storms', token: '0', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'feed-nrel-ev', token: '1', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'feed-nws-alerts', token: '2', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'feed-openaq', token: '3', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'feed-spc-outlook', token: '4', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'feed-volcanoes', token: '5', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'feed-waqi', token: '6', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'feed-wildfire-perimeters', token: '7', disposition: 'enabled-only' }),
   Object.freeze({ id: 'flights', token: 'f', disposition: 'enabled+options', optionOwner: 'flights' }),
   Object.freeze({ id: 'local-dams', token: 'q', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-datacenters', token: 'd', disposition: 'enabled-only' }),
